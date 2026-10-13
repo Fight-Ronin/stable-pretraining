@@ -1,6 +1,6 @@
 """DAE-Net reconstruction and regularization objective.
 
-MIT, Copyright 2023 Zhiqin Chen. See backbone/dae_net.py.
+Source and license: THIRD_PARTY_NOTICES.md (DAE-Net).
 """
 
 import math

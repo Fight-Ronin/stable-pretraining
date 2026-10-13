@@ -3,8 +3,7 @@
 Inputs are integer branch/label counts, independent of models and data formats.
 Semantic labels must be mapped to a fixed category vocabulary before counting.
 
-MIT, Copyright 2023 Zhiqin Chen.
-See stable_pretraining/backbone/dae_net.py.
+Source and license: THIRD_PARTY_NOTICES.md (DAE-Net).
 """
 
 from dataclasses import dataclass

@@ -1,7 +1,6 @@
 """Surface-label adapter for the DAE-Net benchmark.
 
-MIT, Copyright 2023 Zhiqin Chen.
-See stable_pretraining/backbone/dae_net.py.
+Source and license: THIRD_PARTY_NOTICES.md (DAE-Net).
 """
 
 import hashlib

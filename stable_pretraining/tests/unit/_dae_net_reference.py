@@ -1,8 +1,6 @@
 """Frozen upstream DAE-Net network classes for offline numerical parity.
 
-Source: https://github.com/czq142857/DAE-Net/blob/4f4af22519940b774ae47e9c8d9a99fbfd17ac9b/model.py
-MIT, Copyright (c) 2023 Zhiqin Chen.
-License: stable_pretraining/backbone/dae_net.py.
+Source and license: THIRD_PARTY_NOTICES.md (DAE-Net).
 
 The five class definitions are unchanged; only the header and imports differ.
 Formatting is disabled to preserve the original definitions. Source SHA256:
