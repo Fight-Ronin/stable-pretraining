@@ -46,7 +46,12 @@ from .inspection_utils import (
 )
 from .error_handling import with_hf_retry_ratelimit
 from .visualization import format_df_to_latex
-from . import flops, solver
+from . import (
+    flops,
+    solver,
+    occupancy_evaluation,
+    part_segmentation_evaluation,
+)
 from .stats import mean_std, mean_var
 from .online_topk import StreamingTopKEigen
 
@@ -91,4 +96,6 @@ __all__ = [
     "mean_var",
     "solver",
     "StreamingTopKEigen",
+    "occupancy_evaluation",
+    "part_segmentation_evaluation",
 ]
