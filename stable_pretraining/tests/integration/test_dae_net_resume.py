@@ -61,8 +61,13 @@ class _Data(spt.data.DataModule):
     def __init__(self, root, world):
         dataset = _Queries(root, root / "train.jsonl", split="train")
         usage = _Queries(root, root / "train.jsonl", split="train", load_queries=False)
-        sampler = spt.data.DAENetExposureSampler(dataset, shapes_per_epoch=5, seed=91)
-        batches = spt.data.DAENetDistributedBatchSampler(sampler, 3, world_size=world)
+        sampler = spt.data.DAENetExposureSampler(
+            dataset, shapes_per_epoch=len(dataset), seed=91
+        )
+        batch_size = max(3, world + 1)
+        batches = spt.data.DAENetDistributedBatchSampler(
+            sampler, batch_size, world_size=world
+        )
         train = DataLoader(
             dataset, batch_sampler=batches, generator=torch.Generator().manual_seed(91)
         )
@@ -153,7 +158,7 @@ def _worker(rank, world, root, output, epochs, checkpoint):
         trainer = pl.Trainer(
             accelerator="cpu",
             devices=world,
-            strategy="ddp" if world > 1 else "auto",
+            strategy="ddp_find_unused_parameters_true" if world > 1 else "auto",
             precision="32-true",
             use_distributed_sampler=False,
             max_epochs=epochs,
@@ -218,14 +223,18 @@ def _run(world, root, output, epochs, checkpoint=None):
     ]
 
 
-@pytest.mark.parametrize("world", [1, 2])
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "world", [1, *[pytest.param(n, marks=pytest.mark.distributed) for n in (2, 3, 4)]]
+)
 def test_natural_manager_resume_with_new_processes(tmp_path, world):
     h5py = pytest.importorskip("h5py")
     rng = np.random.default_rng(19)
+    shapes = max(5, 2 * world + 1)
     with h5py.File(tmp_path / "shapes.hdf5", "w") as source:
-        source["voxels"] = rng.integers(0, 2, (5, 64, 64, 64, 1), dtype=np.uint8)
-        source["points_64"] = rng.integers(0, 64, (5, 32768, 3), dtype=np.uint8)
-        source["values_64"] = rng.integers(0, 2, (5, 32768, 1), dtype=np.uint8)
+        source["voxels"] = rng.integers(0, 2, (shapes, 64, 64, 64, 1), dtype=np.uint8)
+        source["points_64"] = rng.integers(0, 64, (shapes, 32768, 3), dtype=np.uint8)
+        source["values_64"] = rng.integers(0, 2, (shapes, 32768, 1), dtype=np.uint8)
     (tmp_path / "train.jsonl").write_text(
         "".join(
             json.dumps(
@@ -238,7 +247,7 @@ def test_natural_manager_resume_with_new_processes(tmp_path, world):
                 }
             )
             + "\n"
-            for i in range(5)
+            for i in range(shapes)
         )
     )
     baseline = _run(world, tmp_path, tmp_path / "continuous", 6)
@@ -252,14 +261,16 @@ def test_natural_manager_resume_with_new_processes(tmp_path, world):
         with pytest.raises(ValueError, match="completed-epoch"):
             spt.callbacks.DAENetRevival.validate_checkpoint(premature)
     if world > 1:
-        _assert_equal(baseline[0]["controller"], baseline[1]["controller"])
-        for left, right in zip(baseline[0]["steps"], baseline[1]["steps"]):
-            _assert_equal(left["network"], right["network"])
-            _assert_equal(left["optimizer"], right["optimizer"])
         states = baseline[0]["controller"]["rank_rng_states"]
-        assert not torch.equal(
-            states[0]["torch_rng_state"], states[1]["torch_rng_state"]
-        )
+        assert len(states) == world
+        for rank in range(1, world):
+            _assert_equal(baseline[0]["controller"], baseline[rank]["controller"])
+            for left, right in zip(baseline[0]["steps"], baseline[rank]["steps"]):
+                _assert_equal(left["network"], right["network"])
+                _assert_equal(left["optimizer"], right["optimizer"])
+            assert not torch.equal(
+                states[0]["torch_rng_state"], states[rank]["torch_rng_state"]
+            )
     for stop in (3, 4):
         cut = tmp_path / f"cut{stop}"
         interrupted = _run(world, tmp_path, cut, stop)

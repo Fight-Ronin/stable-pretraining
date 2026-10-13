@@ -1,4 +1,6 @@
-# DAE-Net: full-category ShapeNet Part benchmark
+# DAE-Net: ShapeNet Part four-category benchmark
+
+Categories: Mug, Chair, Lamp and Skateboard.
 
 Train one DAE-Net per category through `spt.DAENet` and `spt.Manager`, then score
 semantic parts using the released category-wide branch mapping. This recipe
@@ -8,6 +10,11 @@ The scores describe full-category co-segmentation, not held-out generalization.
 
 [Paper](https://arxiv.org/abs/2311.13125) ·
 [Author implementation and data instructions](https://github.com/czq142857/DAE-Net#datasets-and-weights)
+
+Training datasets and samplers are provided by `spt.data`. Offline evaluation
+helpers live alongside `evaluate.py`: `surface_labels.py` loads and matches
+surface labels, `occupancy_evaluation.py` accumulates reconstruction counts,
+and `part_segmentation_evaluation.py` implements semantic mapping and scoring.
 
 ## Install and prepare data
 
@@ -85,10 +92,12 @@ RAM cache. Cache/direct sample equivalence is checked; this is not a claim that
 a fresh training run will reproduce scores bit-for-bit. Default-width models
 are used throughout. Mixed precision is outside this recipe.
 
-### Two-process DDP
+### Single-node DDP
 
-The bounded DDP path uses Linux, one node, two processes, FP32, one Adam update
-per step and `num_workers=0`. Use CPU/Gloo or two GPUs/NCCL:
+The DDP path uses Linux, one node, FP32, one Adam update per step and
+`num_workers=0`. Set `--devices N` for any positive process count that fits
+the available hardware and leaves every rank a nonempty batch. For DDP,
+`N >= 2`; use CPU/Gloo or one GPU per process with NCCL. For example:
 
 ```bash
 python benchmarks/dae_net/train.py \
@@ -97,14 +106,16 @@ python benchmarks/dae_net/train.py \
   --output-dir outputs/dae-mug-ddp --accelerator gpu --devices 2 --strategy ddp
 ```
 
-For an externally allocated two-GPU node, the same arguments can be launched
-with `torchrun --standalone --nproc_per_node=2 benchmarks/dae_net/train.py ...`.
+For an externally allocated node, use
+`torchrun --standalone --nproc_per_node=N benchmarks/dae_net/train.py ... --devices N`.
+The launcher process count and `--devices` must agree.
 Use `--accelerator cpu` for Gloo. One device remains the default.
 
-`--batch-size` always means **global** batch size: 16 gives 8 shapes per rank.
+`--batch-size` always means **global** batch size: 16 on two ranks gives 8 shapes
+per rank.
 The ordered exposure sequence, query offsets and updates per epoch match the
-single-device recipe. Partial global batches are retained; odd batches have
-unequal nonempty rank shards. A tail smaller than two shapes is rejected before
+single-device recipe. Partial global batches are retained, with unequal nonempty
+rank shards when needed. A tail smaller than the process count is rejected before
 training. The effective config records full and partial rank batch sizes.
 
 Sparsity uses the global existence mean. Reconstruction and other penalties are
@@ -126,7 +137,10 @@ cross-world-size continuation is rejected. Multi-node, elastic world size,
 FSDP, mixed precision, gradient accumulation and mid-epoch resume are outside
 this path. Custom code should use `spt.Manager`,
 `spt.data.DAENetDataModule(..., distributed=True)` and
-`Trainer(use_distributed_sampler=False, devices=2, strategy="ddp")`.
+`Trainer(use_distributed_sampler=False, devices=N,
+strategy="ddp_find_unused_parameters_true")`. This strategy keeps gradient buckets
+stable across fresh-process recovery; the recipe records it in the run config.
+Resume requires the same strategy as the original run.
 
 The four full-category learning results below remain single-GPU results.
 Short DDP checks establish execution and recovery only.
@@ -208,10 +222,12 @@ command produces the native checkpoint used by the scoring command above.
 | Category | Test shapes | Semantic part mIoU (%) | Raw mIoU (%) |
 | --- | ---: | ---: | ---: |
 | Mug | 38 | 90.94 | 92.90 |
+| Chair | 704 | 86.01 | 84.73 |
 | Lamp | 286 | 69.94 | 70.68 |
+| Skateboard | 31 | 62.82 | 64.47 |
 
-The primary score includes postprocessing; it is lower than the raw score in
-these runs. Chair and Skateboard semantic results have not been reported.
+The primary score includes nearest-confident-point postprocessing. Raw and
+postprocessed predictions use separately fitted branch-to-label mappings.
 
 | Category | First-era online IoU (%) | Last accepted-era online IoU (%) | Accepted epoch |
 | --- | ---: | ---: | ---: |
@@ -250,8 +266,8 @@ The GPU environment used Python 3.11.11, PyTorch 2.11.0+cu128 and Lightning 2.6.
 This validation did not retrain the full experiment or re-score Lamp.
 
 The submitted core suite covers reference model/loss/gradient behavior,
-dict-based forward, two-process Gloo loss/parameter-gradient/Adam parity,
-era control, and natural single-device/two-process Manager recovery.
+dict-based forward, Gloo loss/parameter-gradient/Adam parity at two, three and
+four processes, era control, and natural single-device/multi-process Manager recovery.
 Tests generate their own data; no ShapeNet download or checkpoint is needed.
 
 ```bash
@@ -264,9 +280,10 @@ python -m pytest -q \
 
 Run on Linux with local process communication available. The dev extra
 includes `h5py` for the synthetic HDF5 recovery test. Natural six-epoch
-Manager training was checked against new-process recovery after epochs
-three and four; separate local validation also exercised the public CPU
-DDP CLI. Extended data/scoring/CLI tests remain outside this core suite.
+Manager training at one, two, three and four processes is compared against
+new-process recovery after epochs three and four; separate local validation also
+exercised the public CPU DDP CLI. Extended data/scoring tests remain outside this
+core suite.
 
 On two L40S GPUs using NCCL, real Mug data and the default backbone,
 continuous four-epoch training matched 2+2 recovery exactly in model, Adam,

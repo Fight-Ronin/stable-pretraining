@@ -134,12 +134,13 @@ acceptance/rollback. Rejection restores the accepted network weights; it does
 not rewind training progress or optimizer state. Completed-epoch checkpoints
 also preserve controller state for continuation in the same environment.
 
-The two-rank path requires Linux, one node, FP32, zero DataLoader workers and
+The DDP path requires Linux, one node, FP32, zero DataLoader workers and
 one Adam update per step. Configure ``DAENetDataModule(distributed=True)`` and
-``Trainer(devices=2, strategy="ddp", use_distributed_sampler=False)``. Batch
-size is global; tails are retained without padding, and every rank must receive
-a nonempty shard. Rank zero computes usage and revival, then broadcasts weights
-and ages. Checkpoints gather each rank's RNG after the era decision and before
+``Trainer(devices=N, strategy="ddp_find_unused_parameters_true",
+use_distributed_sampler=False)`` to keep gradient buckets stable across restarts.
+Batch size is global; ``N`` is the number of processes on the node. Tails are retained
+without padding, and every rank must receive a nonempty shard. Rank zero computes
+usage and revival, then broadcasts weights and ages. Checkpoints gather each rank's RNG after the era decision and before
 checkpoint saving; ``state_dict()`` itself performs no communication. Resume
 requires unchanged world size, data, global batch and device/software environment.
 

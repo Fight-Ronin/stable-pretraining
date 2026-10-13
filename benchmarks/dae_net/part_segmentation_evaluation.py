@@ -2,6 +2,9 @@
 
 Inputs are integer branch/label counts, independent of models and data formats.
 Semantic labels must be mapped to a fixed category vocabulary before counting.
+
+MIT, Copyright 2023 Zhiqin Chen.
+See stable_pretraining/backbone/dae_net.py.
 """
 
 from dataclasses import dataclass
@@ -203,7 +206,8 @@ def fit_branch_mapping(
         The release resets a rejected candidate to the branch's original label,
         even after an earlier accepted candidate, so its tracked rounded score
         can disagree with its final mapping. Compatibility preserves both
-        quantities explicitly. See tests/fixtures/README.md for provenance.
+        quantities explicitly. The pinned source is recorded in
+        stable_pretraining/tests/unit/_dae_net_reference.py.
     """
     if protocol not in ("majority", "dae_net_release_v1"):
         raise ValueError(f"Unknown mapping protocol: {protocol}")

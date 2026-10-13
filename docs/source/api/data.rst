@@ -25,7 +25,6 @@ DAE-Net Data Loading
 
    DAENetDataModule
    DAENetDataset
-   DAENetSurfaceLabels
    DAENetExposureSampler
    DAENetDistributedBatchSampler
 
@@ -38,19 +37,17 @@ with voxels only, independently of repeated query training.
 defaults for pinned memory and persistent workers apply to dictionary loader
 configurations; prebuilt DataLoaders retain their existing settings.
 
-For two-rank DDP, set ``distributed=True`` and use
+For single-node DDP, set ``distributed=True`` and use
 ``Trainer(use_distributed_sampler=False)``. ``batch_size`` is global;
 ``DAENetDistributedBatchSampler`` partitions each ordered global exposure batch
-without padding or dropping its tail. Both ranks must receive at least one shape
+without padding or dropping its tail. All ranks must receive at least one shape
 per step. The current DDP controller requires ``num_workers=0`` and derives the
 training loader generator state from the sampler seed and epoch. Usage remains
 a full traversal performed by rank zero. See the full-category benchmark for
 launch and completed-epoch recovery commands.
 
-``DAENetSurfaceLabels`` independently joins audited surface-point labels to
-voxel records by shape ID for offline evaluation. It verifies source hashes,
-uses fixed category label vocabularies, and applies the released coordinate
-transform without rescaling. It does not modify training data loading.
+Offline surface-label loading and occupancy/semantic scoring live in
+``benchmarks/dae_net/`` alongside the evaluation entry point.
 
 Real Data Wrappers
 ------------------

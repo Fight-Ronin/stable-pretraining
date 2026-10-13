@@ -1,10 +1,18 @@
 """Frozen upstream DAE-Net network classes for offline numerical parity.
 
-Source: czq142857/DAE-Net model.py
-Commit: 4f4af22519940b774ae47e9c8d9a99fbfd17ac9b
+Source: https://github.com/czq142857/DAE-Net/blob/4f4af22519940b774ae47e9c8d9a99fbfd17ac9b/model.py
 MIT, Copyright (c) 2023 Zhiqin Chen.
-See stable_pretraining/backbone/licenses/DAE_NET_LICENSE.
-Class definitions are unmodified; training/rendering imports are omitted.
+License: stable_pretraining/backbone/dae_net.py.
+
+The five class definitions are unchanged; only the header and imports differ.
+Formatting is disabled to preserve the original definitions. Source SHA256:
+CRLF: 46bbe3d9071c09c9a201f6e5bd9b5ab970be07581c0da99ad1e75adb77081064
+LF:   65bf2fe52cfc9fa0cdf65afdb4ba328bce977aca716fbe3d74db3c587c118a1e
+
+The reference runs offline without ShapeNet data, pretrained weights or CUDA.
+Its encoder forces float32, so end-to-end parity uses FP32; the decoder is also
+compared in float64. Tests independently transcribe the released training loss
+and include hand-calculated value and gradient checks.
 """
 
 # ruff: noqa

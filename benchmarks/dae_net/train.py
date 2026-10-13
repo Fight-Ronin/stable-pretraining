@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
         argv: CLI arguments, or None for process arguments.
 
     Note:
-        FP32 on one device or two single-node DDP ranks is supported.
+        FP32 on one device or multiple single-node DDP ranks is supported.
         Batch size is global. Batch limits mark smoke runs; they
         are saved in checkpoint settings and must remain unchanged on resume.
     """
@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--manifest-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--accelerator", choices=("cpu", "gpu"), default="gpu")
-    parser.add_argument("--devices", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--devices", type=_positive, default=1)
     parser.add_argument("--strategy", choices=("auto", "ddp"), default="auto")
     parser.add_argument(
         "--resume",
@@ -236,15 +236,15 @@ def main(argv: list[str] | None = None) -> None:
         help="Stop at this completed epoch without changing the configured total budget",
     )
     args = parser.parse_args(argv)
-    if args.strategy == "ddp" and args.devices != 2:
-        parser.error("DDP requires --devices 2")
-    if args.devices == 2 and platform.system() != "Linux":
+    if args.strategy == "ddp" and args.devices < 2:
+        parser.error("DDP requires --devices >= 2")
+    if args.devices > 1 and platform.system() != "Linux":
         parser.error("DAE-Net DDP currently supports Linux only")
-    if args.devices == 2 and (
-        int(os.environ.get("LOCAL_WORLD_SIZE", "2")) != 2
+    if args.devices > 1 and (
+        int(os.environ.get("LOCAL_WORLD_SIZE", str(args.devices))) != args.devices
         or int(os.environ.get("GROUP_WORLD_SIZE", "1")) != 1
     ):
-        parser.error("DAE-Net DDP requires two ranks on a single node")
+        parser.error("DAE-Net DDP requires all ranks on a single node")
     if "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) != args.devices:
         parser.error("Launcher WORLD_SIZE must match --devices")
     config = load_config(args.category, args.config)
@@ -289,14 +289,15 @@ def main(argv: list[str] | None = None) -> None:
             else "CPU",
         },
     }
-    if args.devices == 2:
+    if args.devices > 1:
 
         def shards(size: int) -> list[int]:
-            return [size // 2 + size % 2, size // 2]
+            quotient, remainder = divmod(size, args.devices)
+            return [quotient + int(rank < remainder) for rank in range(args.devices)]
 
         settings.update(
-            world_size=2,
-            strategy="ddp",
+            world_size=args.devices,
+            strategy="ddp_find_unused_parameters_true",
             sampling_protocol="global-exposure-v1",
             rank_batch_sizes=shards(config["batch_size"]),
             rank_tail_batch_sizes=shards(tail) if tail else None,
@@ -367,7 +368,8 @@ def main(argv: list[str] | None = None) -> None:
     trainer = pl.Trainer(
         accelerator=args.accelerator,
         devices=args.devices,
-        strategy="ddp" if args.devices == 2 else "auto",
+        # Stable buckets preserve FP32 reduction order across fresh-process resume.
+        strategy=settings.get("strategy", "auto"),
         use_distributed_sampler=False,
         precision="32-true",
         deterministic=True,

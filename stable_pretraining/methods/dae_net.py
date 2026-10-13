@@ -30,10 +30,12 @@ class DAENet(Module):
         The method automatically registers a controller for era-based
         regularization warmup, branch revival, Adam resets, acceptance/rollback,
         and checkpoint persistence including RNG. For Linux single-node DDP,
-        use two FP32 ranks, a DAENetDistributedBatchSampler, zero loader workers,
+        use FP32 ranks, a DAENetDistributedBatchSampler, zero loader workers,
         no gradient accumulation, and Trainer(use_distributed_sampler=False).
-        Batch size is global. Exact resumption targets completed epochs with
-        deterministic loading and the same world size, data and environment.
+        Set strategy="ddp_find_unused_parameters_true" to keep gradient buckets
+        stable across restarts. Batch size is global. Exact resumption targets
+        completed epochs with deterministic loading and the same world size,
+        data and environment.
     """
 
     def __init__(

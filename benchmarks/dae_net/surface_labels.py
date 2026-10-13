@@ -1,4 +1,8 @@
-"""Surface-label adapter owned by the DAE-Net data pipeline."""
+"""Surface-label adapter for the DAE-Net benchmark.
+
+MIT, Copyright 2023 Zhiqin Chen.
+See stable_pretraining/backbone/dae_net.py.
+"""
 
 import hashlib
 import io

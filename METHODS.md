@@ -51,23 +51,6 @@ Methods come in two forms:
 | VISReg | — | `VISReg` | — | — | [Wu et al., 2026](https://arxiv.org/abs/2606.02572) |
 | WMSE | — | `WMSE` | — | — | [Ermolov et al., 2021](https://arxiv.org/abs/2007.06346) |
 
-DAE-Net currently provides the backbone, loss, forward function, and method class
-with fixed-learning-rate Adam. Its controller supports regularization scheduling,
-branch revival, Adam resets, acceptance/rollback, and checkpoint state including
-Torch CPU/CUDA, Python and NumPy RNG. The bounded DDP path uses Linux, one node,
-two FP32 ranks, global exposure batch sharding, and no gradient accumulation.
-Exact resumption targets completed-epoch checkpoints saved after controller
-updates, the same world size/data/device/software environment, and deterministic
-DAE-Net loaders with independent generators. DDP stores each rank's RNG separately.
-Save with `ModelCheckpoint(save_on_train_epoch_end=True)`. CPU/CUDA continuation
-is tested with deterministic kernels and `num_workers=0`.
-Older checkpoints without RNG fields cannot provide exact continuation.
-Mid-epoch resumption and random worker transforms are not covered.
-The [full-category benchmark](benchmarks/dae_net/README.md) provides four category
-recipes, data preparation, training/recovery and semantic scoring through
-`spt.DAENet` and `Manager`. See the benchmark for DDP launch/recovery commands
-and the distinction between short execution checks and single-GPU learning results.
-
 ---
 
 ## Using Forward Functions

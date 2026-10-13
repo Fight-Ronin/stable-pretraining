@@ -15,9 +15,10 @@ Unreleased
   four category recipes, portable manifest preparation, Manager training/resume,
   local logging and semantic part scoring. Recorded benchmark results and
   full-category learning results use single-device FP32 training.
-- Add bounded Linux, single-node, two-rank DAE-Net DDP: global-batch exposure
-  sharding, globally defined loss/IoU, rank-zero revival, synchronized rollback
-  and per-rank RNG for completed-epoch recovery with unchanged world size.
+- Add Linux, single-node DAE-Net DDP with configurable process counts:
+  global-batch exposure sharding, globally defined loss/IoU, rank-zero revival,
+  synchronized rollback and per-rank RNG for completed-epoch recovery with
+  unchanged world size.
   CPU/Gloo and GPU/NCCL execution checks are separate from learning results.
 - Document the method, forward input/output contract and loss components in
   the API reference, and add the paper citation to the bibliography.

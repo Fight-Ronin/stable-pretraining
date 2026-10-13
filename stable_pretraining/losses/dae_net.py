@@ -1,6 +1,6 @@
-"""DAE-Net objective from czq142857/DAE-Net at 4f4af22519940b774ae47e9c8d9a99fbfd17ac9b.
+"""DAE-Net reconstruction and regularization objective.
 
-MIT, Copyright 2023 Zhiqin Chen. See backbone/licenses/DAE_NET_LICENSE.
+MIT, Copyright 2023 Zhiqin Chen. See backbone/dae_net.py.
 """
 
 import math

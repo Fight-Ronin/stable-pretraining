@@ -39,15 +39,15 @@ class _Outputs(nn.Module):
         }
 
 
-def _launch(worker, directory, *args):
+def _launch(worker, directory, world):
     context = mp.spawn(
-        worker, args=(str(directory / "rendezvous"), *args), nprocs=2, join=False
+        worker, args=(str(directory / "rendezvous"), world), nprocs=world, join=False
     )
     deadline = time.monotonic() + 120
     try:
         while not context.join(timeout=1):
             if time.monotonic() > deadline:
-                raise TimeoutError("DAE-Net two-process test exceeded 120 seconds")
+                raise TimeoutError("DAE-Net distributed test exceeded 120 seconds")
     finally:
         for process in context.processes:
             if process.is_alive():
@@ -90,17 +90,17 @@ def _global_reference(output, target, sparse):
     return {"loss": sum(terms.values()), **terms}
 
 
-def _loss_worker(rank, rendezvous):
+def _loss_worker(rank, rendezvous, world):
     torch.set_num_threads(1)
     dist.init_process_group(
         "gloo",
         init_method=Path(rendezvous).as_uri(),
         rank=rank,
-        world_size=2,
+        world_size=world,
         timeout=timedelta(seconds=40),
     )
     try:
-        for sizes in ((2, 2), (3, 2)):
+        for sizes in ((2,) * world, (3,) + (2,) * (world - 1)):
             for sparse in (0.0, 0.7):
                 torch.manual_seed(51)
                 reference = _Outputs()
@@ -125,7 +125,9 @@ def _loss_worker(rank, rendezvous):
                     local = objective(model.module(inputs[shard]), target[shard], 0.37)
                     wrong = local["sparsity"].detach().clone()
                     dist.all_reduce(wrong)
-                    assert not torch.isclose(wrong / 2, expected["sparsity"], atol=1e-6)
+                    assert not torch.isclose(
+                        wrong / world, expected["sparsity"], atol=1e-6
+                    )
                 expected["loss"].backward()
                 actual["loss"].backward()
                 for parameter, ref in zip(model.parameters(), reference.parameters()):
@@ -147,8 +149,10 @@ def _loss_worker(rank, rendezvous):
         dist.destroy_process_group()
 
 
-def test_global_loss_ddp_parameter_gradients_and_adam(tmp_path):
-    _launch(_loss_worker, tmp_path)
+@pytest.mark.distributed
+@pytest.mark.parametrize("world", [2, 3, 4])
+def test_global_loss_ddp_parameter_gradients_and_adam(tmp_path, world):
+    _launch(_loss_worker, tmp_path, world)
 
 
 class _Records:
@@ -160,13 +164,21 @@ class _Records:
 
 
 @pytest.mark.parametrize(
-    "count,quota,batch_size", [(129, 512, 16), (5, 11, 6), (5, 5, 3)]
+    "world,count,quota,batch_size",
+    [
+        (2, 129, 512, 16),
+        (2, 5, 11, 6),
+        (2, 5, 5, 3),
+        (3, 7, 7, 4),
+        (4, 9, 9, 5),
+        (4, 20, 20, 8),
+    ],
 )
-def test_rank_shards_reconstruct_global_batches(count, quota, batch_size):
+def test_rank_shards_reconstruct_global_batches(world, count, quota, batch_size):
     sampler = DAENetExposureSampler(_Records(count), shapes_per_epoch=quota, seed=19)
     ranks = [
-        DAENetDistributedBatchSampler(sampler, batch_size, rank=r, world_size=2)
-        for r in range(2)
+        DAENetDistributedBatchSampler(sampler, batch_size, rank=r, world_size=world)
+        for r in range(world)
     ]
     for epoch in (0, 1, 7):
         for rank in ranks:
@@ -174,7 +186,7 @@ def test_rank_shards_reconstruct_global_batches(count, quota, batch_size):
         expected = list(sampler)
         actual = []
         for step, shards in enumerate(zip(*ranks)):
-            batch = shards[0] + shards[1]
+            batch = [item for shard in shards for item in shard]
             assert batch == expected[step * batch_size : (step + 1) * batch_size]
             assert min(map(len, shards)) > 0
             actual.extend(batch)
@@ -182,12 +194,14 @@ def test_rank_shards_reconstruct_global_batches(count, quota, batch_size):
         assert len(list(ranks[0])) == len(ranks[0])
 
 
-@pytest.mark.parametrize("count,batch_size", [(5, 4), (3, 1)])
-def test_empty_rank_batch_rejected_before_iteration(count, batch_size):
+@pytest.mark.parametrize(
+    "world,count,batch_size", [(2, 5, 4), (2, 3, 1), (3, 5, 3), (4, 7, 4), (4, 9, 3)]
+)
+def test_empty_rank_batch_rejected_before_iteration(world, count, batch_size):
     sampler = DAENetExposureSampler(_Records(count), shapes_per_epoch=count)
-    for rank in range(2):
+    for rank in range(world):
         batches = DAENetDistributedBatchSampler(
-            sampler, batch_size, rank=rank, world_size=2
+            sampler, batch_size, rank=rank, world_size=world
         )
         with pytest.raises(ValueError, match="at least world_size"):
             next(iter(batches))
@@ -205,7 +219,7 @@ def test_lightning_updates_nested_exposure_sampler():
     assert sampler.epoch == 7
 
 
-def _controller_worker(rank, rendezvous):
+def _controller_worker(rank, rendezvous, world):
     from stable_pretraining.backbone.dae_net import DAENetBackbone
     from stable_pretraining.callbacks.dae_net import DAENetRevival
 
@@ -214,7 +228,7 @@ def _controller_worker(rank, rendezvous):
         "gloo",
         init_method=Path(rendezvous).as_uri(),
         rank=rank,
-        world_size=2,
+        world_size=world,
         timeout=timedelta(seconds=40),
     )
     try:
@@ -228,7 +242,7 @@ def _controller_worker(rank, rendezvous):
             usage_dataloader=lambda: [{"voxels": torch.zeros(2, 1, 64, 64, 64)}]
         )
         trainer = SimpleNamespace(
-            world_size=2,
+            world_size=world,
             is_global_zero=rank == 0,
             datamodule=data,
             global_rank=rank,
@@ -285,7 +299,7 @@ def _controller_worker(rank, rendezvous):
         if rank == 0:
             snapshot = controller.state_dict()
             assert snapshot["schema_version"] == 2
-            assert len(snapshot["rank_rng_states"]) == 2
+            assert len(snapshot["rank_rng_states"]) == world
         dist.barrier()
 
         def broken(*a, **kw):
@@ -301,11 +315,106 @@ def _controller_worker(rank, rendezvous):
         controller.finish_era = broken_decision
         with pytest.raises(RuntimeError, match="broken era decision"):
             controller.on_train_epoch_end(trainer, module)
-        # Both ranks must leave the failed decision, without awaiting a timeout.
+        # Every rank must leave the failed decision, without awaiting a timeout.
         dist.barrier()
     finally:
         dist.destroy_process_group()
 
 
-def test_controller_real_collectives_and_failure_propagation(tmp_path):
-    _launch(_controller_worker, tmp_path)
+@pytest.mark.distributed
+@pytest.mark.parametrize("world", [2, 3, 4])
+def test_controller_real_collectives_and_failure_propagation(tmp_path, world):
+    _launch(_controller_worker, tmp_path, world)
+
+
+@pytest.fixture
+def benchmark_cli(monkeypatch, tmp_path):
+    import importlib.util
+    import sys
+
+    folder = Path(__file__).resolve().parents[3] / "benchmarks/dae_net"
+
+    def load(name):
+        spec = importlib.util.spec_from_file_location(
+            f"dae_multirank_{name}", folder / f"{name}.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    monkeypatch.setitem(sys.modules, "protocol", load("protocol"))
+    train = load("train")
+    monkeypatch.setattr(train, "verify_inputs", lambda *args: "test-manifest")
+    monkeypatch.setattr(train.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(train.spt.utils, "get_rank", lambda: 0)
+    for key in ("LOCAL_WORLD_SIZE", "WORLD_SIZE", "GROUP_WORLD_SIZE"):
+        monkeypatch.delenv(key, raising=False)
+    args = [
+        "--category",
+        "mug",
+        "--data-root",
+        str(tmp_path),
+        "--manifest-dir",
+        str(tmp_path),
+        "--output-dir",
+        str(tmp_path / "run"),
+        "--accelerator",
+        "cpu",
+        "--shapes-per-epoch",
+        "184",
+        "--dry-run",
+    ]
+    return train, args
+
+
+@pytest.mark.parametrize(
+    "world,batch_size,full,tail",
+    [
+        (1, 9, None, None),
+        (2, 9, [5, 4], [2, 2]),
+        (3, 9, [3, 3, 3], [2, 1, 1]),
+        (4, 9, [3, 2, 2, 2], [1, 1, 1, 1]),
+        (8, 16, [2] * 8, [1] * 8),
+    ],
+)
+def test_benchmark_device_count_and_global_batch_settings(
+    benchmark_cli, capsys, world, batch_size, full, tail
+):
+    import json
+
+    train, args = benchmark_cli
+    train.main(args + ["--devices", str(world), "--batch-size", str(batch_size)])
+    settings = json.loads(capsys.readouterr().out)["settings"]
+    if world == 1:
+        assert "world_size" not in settings
+    else:
+        assert settings["world_size"] == world
+        assert settings["strategy"] == "ddp_find_unused_parameters_true"
+        assert settings["rank_batch_sizes"] == full
+        assert settings["rank_tail_batch_sizes"] == tail
+
+
+@pytest.mark.parametrize(
+    "extra,env,message",
+    [
+        (["--devices", "0"], {}, "must be positive"),
+        (["--devices", "-1"], {}, "must be positive"),
+        (["--devices", "1", "--strategy", "ddp"], {}, "--devices >= 2"),
+        ([], {"WORLD_SIZE": "3"}, "WORLD_SIZE must match"),
+        ([], {"LOCAL_WORLD_SIZE": "2"}, "single node"),
+        ([], {"GROUP_WORLD_SIZE": "2"}, "single node"),
+        (["--batch-size", "9"], {}, "at least devices"),
+    ],
+)
+def test_benchmark_rejects_invalid_launch_or_empty_shards(
+    benchmark_cli, monkeypatch, capsys, extra, env, message
+):
+    train, args = benchmark_cli
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    # Eight ranks and batch nine leave a tail of four shapes for the last case.
+    devices = "8" if extra == ["--batch-size", "9"] else "4"
+    with pytest.raises(SystemExit) as error:
+        train.main(args + ["--devices", devices, *extra])
+    assert error.value.code == 2
+    assert message in capsys.readouterr().err

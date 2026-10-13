@@ -15,7 +15,7 @@ import torch
 import stable_pretraining as spt
 
 
-from stable_pretraining.tests.fixtures import dae_net_reference as reference
+from stable_pretraining.tests.unit import _dae_net_reference as reference
 
 
 pytestmark = pytest.mark.unit

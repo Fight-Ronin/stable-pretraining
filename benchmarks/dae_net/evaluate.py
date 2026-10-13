@@ -15,6 +15,10 @@ import torch
 
 import stable_pretraining as spt
 
+import part_segmentation_evaluation as metrics
+from occupancy_evaluation import OccupancyCounts
+from surface_labels import DAENetSurfaceLabels
+
 
 def _sha256(path: Path) -> str:
     with path.open("rb") as stream:
@@ -87,7 +91,7 @@ def _evaluate_shape(
     sample = dataset[index, 0]
     encoded = backbone.encode(sample["voxels"].unsqueeze(0).to(device))
     resolution = dataset.records[index]["query_resolution"]
-    counts = spt.utils.occupancy_evaluation.OccupancyCounts()
+    counts = OccupancyCounts()
     query_digest = hashlib.sha256()
     for offset in range(4 if resolution == 64 else 1):
         if offset:
@@ -122,7 +126,6 @@ def _evaluate_semantic(
     chunk_size: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Infer surface branches once, then score raw and released postprocessing."""
-    metrics = spt.utils.part_segmentation_evaluation
     rows, raw_counts, counts = [], [], []
     cache = {
         key: []
@@ -384,7 +387,7 @@ def main(argv: list[str] | None = None) -> None:
         load_queries=args.metric == "occupancy",
     )
     surfaces = (
-        spt.data.DAENetSurfaceLabels(
+        DAENetSurfaceLabels(
             args.data_root, args.labels_manifest, dataset.records, split=args.split
         )
         if args.metric == "semantic"

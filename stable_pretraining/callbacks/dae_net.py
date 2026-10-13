@@ -25,7 +25,9 @@ class DAENetRevival(pl.Callback):
             Defaults to 10.
 
     Note:
-        Targets single-device FP32 or Linux single-node, two-rank DDP training.
+        Targets single-device FP32 or Linux single-node DDP training.
+        For exact restart checks, use strategy="ddp_find_unused_parameters_true"
+        so gradient bucket rebuilding does not change FP32 reduction order.
         DDP requires global exposure batch sharding, no gradient accumulation,
         and zero DataLoader workers. Usage and revival run on rank zero before
         broadcasting weights; each rank clears Adam history. Exact resumption
@@ -276,14 +278,13 @@ class DAENetRevival(pl.Callback):
             from ..data.dae_net import DAENetDistributedBatchSampler
 
             if (
-                trainer.world_size != 2
-                or trainer.num_nodes != 1
+                trainer.num_nodes != 1
                 or not isinstance(trainer.strategy, DDPStrategy)
                 or trainer.precision != "32-true"
                 or trainer.accumulate_grad_batches != 1
             ):
                 raise RuntimeError(
-                    "DAE-Net DDP requires one node, two ranks, FP32 and no gradient accumulation"
+                    "DAE-Net DDP requires one node, FP32 and no gradient accumulation"
                 )
             if not isinstance(
                 trainer.train_dataloader.batch_sampler, DAENetDistributedBatchSampler

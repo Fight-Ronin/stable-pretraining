@@ -11,9 +11,18 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
 
-from ._dae_net.hdf5 import _import_h5py
 from .module import DataModule
 from ..utils.distributed import get_rank, get_world_size
+
+
+def _import_h5py() -> Any:
+    try:
+        import h5py
+    except ImportError as exc:
+        raise ImportError(
+            "DAENetDataset requires the optional dependency 'h5py'"
+        ) from exc
+    return h5py
 
 
 class DAENetExposureSampler(Sampler[tuple[int, int]]):

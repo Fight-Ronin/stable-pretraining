@@ -12,7 +12,6 @@ from .dae_net import (
     DAENetDistributedBatchSampler,
     DAENetExposureSampler,
 )
-from ._dae_net.segmentation import DAENetSurfaceLabels
 from .datasets import Dataset, FromTorchDataset, HFDataset, Subset
 from .gpu_transforms import GPUCompose, MultiView, StackedMultiView, ToDevice
 from .download import bulk_download, download
@@ -77,7 +76,6 @@ __all__ = [
     "MultiView",
     # Real data wrappers
     "DAENetDataset",
-    "DAENetSurfaceLabels",
     "FromTorchDataset",
     "HFDataset",
     "Subset",
